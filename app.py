@@ -28,23 +28,13 @@ external_stylesheets = [
     'https://codepen.io/chriddyp/pen/brPBPO.css']
 
 #---------------------------------------------------------------------------
-fig = go.Figure()
-figure_styling.style(fig)
-fig.add_trace(go.Scatter(x=[120,0], y=[120,0], mode='markers'))
+
 app = dash.Dash(__name__, suppress_callback_exceptions=True, external_stylesheets=[dbc.themes.LUX],
                 meta_tags=[{'name': 'viewport',
                             'content': 'width=device-width, initial-scale=1.0'}]
                 )
 id_range = range(1, 7)
 patients_names = {}
-sensors_coordinates = {
-    "L0": (120,120),
-    "L1": (0,0),
-    "L2": (0,0),
-    "R0": (0,0),
-    "R1": (0,0),
-    "R2": (0,0),
-}
 #N = 100
 def get_data():
     for _id in id_range:
@@ -65,7 +55,6 @@ def get_sensors_data():
             sensors_dict[p_id].append(measurment)
             #print(measurment)
     return sensors_dict
-
 current_patient = 5
 dfs = [pd.DataFrame(get_data()[i]) for i in id_range]
 for i in id_range:
@@ -83,8 +72,20 @@ def generate_table( max_rows=40): #dataframe
         id='table', data=dataframe.to_dict('records'),
         columns=[{"name": i, "id": i} for i in dataframe.columns],
     )
-    
 
+def generate_fig():
+    fig = go.Figure()
+    color = ['rgb(93, 164, 214)', 'rgb(255, 144, 14)', 'rgb(44, 160, 101)','rgb(93, 164, 214)', 'rgb(255, 144, 14)', 'rgb(44, 160, 101)']
+
+    foot_values = df[df['patient_id'] == current_patient+1]['value'].values.tolist()
+
+    figure_styling.style(fig)
+    fig.add_trace(go.Scatter(x=[120,50,100, 250, 320, 270], y=[120,200,450, 120, 200, 450], mode='markers+text',text=foot_values, marker=dict(
+        color=color,
+        size=30,
+    )))
+    return fig
+    
 app_tabs = html.Div(
     [
         dbc.Tabs(
@@ -108,7 +109,7 @@ main_layout = html.Div([
     generate_table(),
     dcc.Interval(id='interval1', interval=1000, n_intervals=0),
     html.H1(id='label1', children=''),
-    html.Div(dcc.Graph(figure=fig),
+    html.Div(dcc.Graph(figure=generate_fig()), id="main_graph",
         style={
             "width": "100%",
             "display": "flex",
@@ -127,6 +128,7 @@ app.layout = html.Div([
 def compute_value(value):
     current_patient = value - 1
     return dfs[current_patient].to_dict('record')
+
 
 @app.callback(dash.dependencies.Output('label1', 'children'),
     [dash.dependencies.Input('interval1', 'n_intervals')])
