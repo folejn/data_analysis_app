@@ -1,11 +1,7 @@
 import os
-import copy
 from threading import current_thread
-import time
-import datetime
-import json
 import requests
-from pandas.io.json import json_normalize
+import plotly.graph_objects as go
 
 import dash
 import dash_table
@@ -18,7 +14,6 @@ from requests.sessions import Request
 from werkzeug.wrappers import response
 from flask_caching import Cache
 
-
 external_stylesheets = [
     # Dash CSS
     'https://codepen.io/chriddyp/pen/bWLwgP.css',
@@ -26,6 +21,26 @@ external_stylesheets = [
     'https://codepen.io/chriddyp/pen/brPBPO.css']
 
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
+#---------------------------------------------------------------------------
+fig = go.Figure()
+img_width = 920
+img_height = 920
+scale_factor = 0.5
+fig.add_layout_image(
+        x=0,
+        sizex=img_width,
+        y=0,
+        sizey=img_height,
+        xref="x",
+        yref="y",
+        opacity=1.0,
+        layer="below",
+        source="D:/sem5/python/proj/data_analysis_app/image.jpg"
+)
+fig.update_xaxes(showgrid=False, range=(0, img_width))
+fig.update_yaxes(showgrid=False, scaleanchor='x', range=(img_height, 0))
+
+#---------------------------------------------------------------------------
 id_range = range(1, 7)
 patients_names = {}
 #N = 100
@@ -72,7 +87,7 @@ app.layout = html.Div([
     generate_table(),
     dcc.Interval(id='interval1', interval=1000, n_intervals=0),
     html.H1(id='label1', children=''),
-
+    dcc.Graph(figure=fig)
 ])
 
 
