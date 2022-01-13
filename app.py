@@ -2,15 +2,18 @@ import os
 from threading import current_thread
 import requests
 import plotly.graph_objects as go
+#from PIL import Image
+
+from dash import html
+import dash_bootstrap_components as dbc
 
 import dash
 #import dash_table
-from dash import dash_table
 #import dash_core_components as dcc
-from dash import dcc
 #import dash_html_components as html
 from dash import html
-import dash_bootstrap_components as dbc
+from dash import dcc
+from dash import dash_table
 import numpy as np
 import pandas as pd
 from dash.dependencies import Input, Output
@@ -18,41 +21,21 @@ from requests.sessions import Request
 from werkzeug.wrappers import response
 from flask_caching import Cache
 
+import figure_styling
 external_stylesheets = [
     # Dash CSS
     'https://codepen.io/chriddyp/pen/bWLwgP.css',
     # Loading screen CSS
     'https://codepen.io/chriddyp/pen/brPBPO.css']
 
-<<<<<<< HEAD
-app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 #---------------------------------------------------------------------------
 fig = go.Figure()
-img_width = 920
-img_height = 920
-scale_factor = 0.5
-fig.add_layout_image(
-        x=0,
-        sizex=img_width,
-        y=0,
-        sizey=img_height,
-        xref="x",
-        yref="y",
-        opacity=1.0,
-        layer="below",
-        source="D:/sem5/python/proj/data_analysis_app/image.jpg"
-)
-fig.update_xaxes(showgrid=False, range=(0, img_width))
-fig.update_yaxes(showgrid=False, scaleanchor='x', range=(img_height, 0))
+figure_styling.style(fig)
 
-#---------------------------------------------------------------------------
-=======
-#app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 app = dash.Dash(__name__, suppress_callback_exceptions=True, external_stylesheets=[dbc.themes.LUX],
                 meta_tags=[{'name': 'viewport',
                             'content': 'width=device-width, initial-scale=1.0'}]
                 )
->>>>>>> 65d674e95c7fe937912d00a488515d1126208b89
 id_range = range(1, 7)
 patients_names = {}
 #N = 100
@@ -77,11 +60,15 @@ def get_sensors_data():
     return sensors_dict
 
 current_patient = 5
-#df = pd.DataFrame(get_data()[current_patient])
 dfs = [pd.DataFrame(get_data()[i]) for i in id_range]
-len(dfs)
+for i in id_range:
+    dfs[i-1]["patient_id"] = i
+df = pd.concat(dfs)
+print(df)
+
 def generate_table( max_rows=40): #dataframe
-    dataframe = dfs[current_patient]
+    #dataframe = dfs[current_patient]
+    dataframe = df[df["patient_id"] == current_patient].drop('patient_id', axis=1)
     print(f'Computing for patient: {current_patient}')
     print(dataframe)
     print(dataframe.to_dict('records'))
@@ -89,8 +76,7 @@ def generate_table( max_rows=40): #dataframe
         id='table', data=dataframe.to_dict('records'),
         columns=[{"name": i, "id": i} for i in dataframe.columns],
     )
-
-# TABS
+    
 
 app_tabs = html.Div(
     [
@@ -105,14 +91,8 @@ app_tabs = html.Div(
         ),
     ], className="mt-3"
 )
-    
-app.layout = html.Div([
-    dbc.Row(dbc.Col(html.H1("Activity Tracking",
-                            style={"textAlign": "center"}), width=12)),
-    html.Hr(),
-    dbc.Row(dbc.Col(app_tabs, width=12), className="mb-3"),
-    html.Div(id='content', children=[]),
 
+main_layout = html.Div([
     dcc.Dropdown(
         id='dropdown',
         options=[{'label': i, 'value': i} for i in id_range],
@@ -121,10 +101,21 @@ app.layout = html.Div([
     generate_table(),
     dcc.Interval(id='interval1', interval=1000, n_intervals=0),
     html.H1(id='label1', children=''),
-    dcc.Graph(figure=fig)
+    html.Div(dcc.Graph(figure=fig),
+        style={
+            "width": "100%",
+            "display": "flex",
+            "justify-content": "center",
+    }),
 ])
+app.layout = html.Div([
+    dbc.Row(dbc.Col(html.H1("Activity Tracking",
+                            style={"textAlign": "center"}), width=12)),
+    html.Hr(),
+    dbc.Row(dbc.Col(app_tabs, width=12), className="mb-3"),
+    html.Div(id='content', children=[]),
 
-
+])
 @app.callback(Output('table', 'data'), Input('dropdown', 'value'))
 def compute_value(value):
     current_patient = value - 1
@@ -142,7 +133,7 @@ def update_interval(n):
 
 def switch_tab(tab_chosen):
     if tab_chosen == "tab-main":
-        return tab_chosen
+        return main_layout
     elif tab_chosen == "tab-graphs":
         return tab_chosen
     elif tab_chosen == "tab-about":
