@@ -2,7 +2,6 @@ import os
 from threading import current_thread
 import requests
 import plotly.graph_objects as go
-#from PIL import Image
 
 from dash import html
 import dash_bootstrap_components as dbc
@@ -31,13 +30,21 @@ external_stylesheets = [
 #---------------------------------------------------------------------------
 fig = go.Figure()
 figure_styling.style(fig)
-
+fig.add_trace(go.Scatter(x=[120,0], y=[120,0], mode='markers'))
 app = dash.Dash(__name__, suppress_callback_exceptions=True, external_stylesheets=[dbc.themes.LUX],
                 meta_tags=[{'name': 'viewport',
                             'content': 'width=device-width, initial-scale=1.0'}]
                 )
 id_range = range(1, 7)
 patients_names = {}
+sensors_coordinates = {
+    "L0": (120,120),
+    "L1": (0,0),
+    "L2": (0,0),
+    "R0": (0,0),
+    "R1": (0,0),
+    "R2": (0,0),
+}
 #N = 100
 def get_data():
     for _id in id_range:
