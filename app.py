@@ -1,5 +1,6 @@
 import os
-from threading import current_thread
+from time import sleep
+from pandas.core.frame import DataFrame
 import requests
 import plotly.graph_objects as go
 
@@ -20,7 +21,13 @@ from requests.sessions import Request
 from werkzeug.wrappers import response
 from flask_caching import Cache
 
+from rq import Queue
+from redis import Redis
+from my_queue_queries import get_current_patient_data, get_patient_values, update_table_patient_data
 import figure_styling
+
+conn1 = Redis('127.0.0.1', 6379)
+q1 = Queue('low', connection=conn1, job_timeout='3m')
 external_stylesheets = [
     # Dash CSS
     'https://codepen.io/chriddyp/pen/bWLwgP.css',
@@ -33,6 +40,8 @@ app = dash.Dash(__name__, suppress_callback_exceptions=True, external_stylesheet
                 meta_tags=[{'name': 'viewport',
                             'content': 'width=device-width, initial-scale=1.0'}]
                 )
+#to be moved to another file
+#--------------------------------------
 id_range = range(1, 7)
 patients_names = {}
 #N = 100
@@ -55,6 +64,7 @@ def get_sensors_data():
             sensors_dict[p_id].append(measurment)
             #print(measurment)
     return sensors_dict
+#------------------------------------------------------------------------------
 current_patient = 5
 dfs = [pd.DataFrame(get_data()[i]) for i in id_range]
 for i in id_range:
@@ -62,9 +72,12 @@ for i in id_range:
 df = pd.concat(dfs)
 print(df)
 
+    
 def generate_table( max_rows=40): #dataframe
-    #dataframe = dfs[current_patient]
-    dataframe = df[df["patient_id"] == current_patient].drop('patient_id', axis=1)
+    job = q1.enqueue(get_current_patient_data, args = (df, current_patient))
+    sleep(6)
+    dataframe = job.result
+    #dataframe = df[df["patient_id"] == current_patient].drop('patient_id', axis=1)
     print(f'Computing for patient: {current_patient}')
     print(dataframe)
     print(dataframe.to_dict('records'))
@@ -77,8 +90,11 @@ def generate_fig():
     fig = go.Figure()
     color = ['rgb(93, 164, 214)', 'rgb(255, 144, 14)', 'rgb(44, 160, 101)','rgb(93, 164, 214)', 'rgb(255, 144, 14)', 'rgb(44, 160, 101)']
 
-    foot_values = df[df['patient_id'] == current_patient+1]['value'].values.tolist()
-
+    #foot_values = df[df['patient_id'] == current_patient]['value'].values.tolist()
+    job = q1.enqueue(get_patient_values, args = (df, current_patient))
+    sleep(3)
+    foot_values = job.result.values.tolist()
+    
     figure_styling.style(fig)
     fig.add_trace(go.Scatter(x=[120,50,100, 250, 320, 270], y=[120,200,450, 120, 200, 450], mode='markers+text',text=foot_values, marker=dict(
         color=color,
@@ -104,7 +120,7 @@ main_layout = html.Div([
     dcc.Dropdown(
         id='dropdown',
         options=[{'label': i, 'value': i} for i in id_range],
-        value=current_patient + 1
+        value=current_patient
     ),
     generate_table(),
     dcc.Interval(id='interval1', interval=1000, n_intervals=0),
@@ -126,14 +142,17 @@ app.layout = html.Div([
 ])
 @app.callback(Output('table', 'data'), Input('dropdown', 'value'))
 def compute_value(value):
-    current_patient = value - 1
-    return dfs[current_patient].to_dict('record')
+    current_patient = value
+    job = q1.enqueue(update_table_patient_data, args = (df, current_patient))
+    sleep(3)
+    result = job.result
+    return result.to_dict('record')
 
 
 @app.callback(dash.dependencies.Output('label1', 'children'),
     [dash.dependencies.Input('interval1', 'n_intervals')])
 def update_interval(n):
-    return 'Intervals Passed: ' + str(n)
+    return f'interval {n}'
 
 @app.callback(
     Output("content", "children"),

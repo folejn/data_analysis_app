@@ -21,5 +21,5 @@ def style(figure):
     ))
 
     figure.update_layout(template="plotly_white", autosize=False, width=img_width, height=img_height)
-    figure.update_xaxes(visible=True, showgrid=False, range=(0, img_width))
-    figure.update_yaxes(visible=True, showgrid=False, range=(img_height, 0))
+    figure.update_xaxes(visible=False, showgrid=False, range=(0, img_width))
+    figure.update_yaxes(visible=False, showgrid=False, range=(img_height, 0))
