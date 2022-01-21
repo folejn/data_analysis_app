@@ -7,10 +7,10 @@ def get_current_patient_data(df, current_patient):
 
 def update_table_patient_data(df, current_patient):
     res = df[df['patient_id'] == current_patient]
-    print("here")
+    print(current_patient)
     return res
 
 def get_patient_values(df, current_patient):
     res = df[df['patient_id'] == current_patient]['value']
-    print("here")
+    print(current_patient)
     return res

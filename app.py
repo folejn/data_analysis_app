@@ -16,7 +16,7 @@ from dash import dcc
 from dash import dash_table
 import numpy as np
 import pandas as pd
-from dash.dependencies import Input, Output
+from dash.dependencies import Input, Output, State
 from requests.sessions import Request
 from werkzeug.wrappers import response
 from flask_caching import Cache
@@ -25,8 +25,11 @@ from rq import Queue
 from redis import Redis
 from my_queue_queries import get_current_patient_data, get_patient_values, update_table_patient_data
 import figure_styling
+import url_services.repository
+from url_services.url_service import UrlService
 
 conn1 = Redis('127.0.0.1', 6379)
+
 q1 = Queue('low', connection=conn1, job_timeout='3m')
 external_stylesheets = [
     # Dash CSS
@@ -75,7 +78,8 @@ print(df)
     
 def generate_table( max_rows=40): #dataframe
     job = q1.enqueue(get_current_patient_data, args = (df, current_patient))
-    sleep(6)
+    while job.result is None:
+        pass
     dataframe = job.result
     #dataframe = df[df["patient_id"] == current_patient].drop('patient_id', axis=1)
     print(f'Computing for patient: {current_patient}')
@@ -86,22 +90,28 @@ def generate_table( max_rows=40): #dataframe
         columns=[{"name": i, "id": i} for i in dataframe.columns],
     )
 
-def generate_fig():
+def generate_fig(current_patient, df):
     fig = go.Figure()
     color = ['rgb(93, 164, 214)', 'rgb(255, 144, 14)', 'rgb(44, 160, 101)','rgb(93, 164, 214)', 'rgb(255, 144, 14)', 'rgb(44, 160, 101)']
 
     #foot_values = df[df['patient_id'] == current_patient]['value'].values.tolist()
     job = q1.enqueue(get_patient_values, args = (df, current_patient))
-    sleep(3)
+    
+    while job.result is None:
+        pass
     foot_values = job.result.values.tolist()
     
     figure_styling.style(fig)
-    fig.add_trace(go.Scatter(x=[120,50,100, 250, 320, 270], y=[120,200,450, 120, 200, 450], mode='markers+text',text=foot_values, marker=dict(
-        color=color,
+    fig.add_trace(go.Scatter(x=[120,50,100, 280, 350, 300], y=[120,200,450, 120, 200, 450], mode='markers+text',text=foot_values, marker=dict(
+        color=(foot_values+[100,0]),
         size=30,
+        showscale=True,
+        colorscale='temps',
     )))
     return fig
+
     
+       
 app_tabs = html.Div(
     [
         dbc.Tabs(
@@ -125,8 +135,8 @@ main_layout = html.Div([
     generate_table(),
     dcc.Interval(id='interval1', interval=1000, n_intervals=0),
     html.H1(id='label1', children=''),
-    html.Div(dcc.Graph(figure=generate_fig()), id="main_graph",
-        style={
+    html.Div(dcc.Graph( id="main_graph",
+        ), style={
             "width": "100%",
             "display": "flex",
             "justify-content": "center",
@@ -140,19 +150,19 @@ app.layout = html.Div([
     html.Div(id='content', children=[]),
 
 ])
-@app.callback(Output('table', 'data'), Input('dropdown', 'value'))
-def compute_value(value):
+@app.callback([Output('table', 'data'), Output('main_graph','figure')],
+              [Input('dropdown', 'value'), Input('interval1', 'n_intervals')])
+def compute_value(value, n):
+    df = url_services.repository.get_latest()
     current_patient = value
     job = q1.enqueue(update_table_patient_data, args = (df, current_patient))
-    sleep(3)
+    while job.result is None:
+        pass
     result = job.result
-    return result.to_dict('record')
+    
+    figure = generate_fig(current_patient=current_patient, df=df)
+    return result.to_dict('record'), figure
 
-
-@app.callback(dash.dependencies.Output('label1', 'children'),
-    [dash.dependencies.Input('interval1', 'n_intervals')])
-def update_interval(n):
-    return f'interval {n}'
 
 @app.callback(
     Output("content", "children"),
@@ -169,4 +179,6 @@ def switch_tab(tab_chosen):
     return html.P("This shouldn't be displayed for now...")
 
 if __name__ == '__main__':
+    service = UrlService("Request for data")
+    service.start()
     app.run_server(debug=True)
