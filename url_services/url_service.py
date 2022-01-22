@@ -29,7 +29,6 @@ class UrlService(threading.Thread):
             for i in self.id_range:
                 dfs[i-1]["patient_id"] = i
             df = pd.concat(dfs)
-            print(df)
             set(df)
         print(f"Service {self.Name} finished operating")
         

@@ -1,8 +1,10 @@
 import os
 from time import sleep
+import random
 from pandas.core.frame import DataFrame
 import requests
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 from dash import html
 import dash_bootstrap_components as dbc
@@ -23,7 +25,7 @@ from flask_caching import Cache
 
 from rq import Queue
 from redis import Redis
-from my_queue_queries import get_current_patient_data, get_patient_values, update_table_patient_data
+from my_queue_queries import get_current_patient_data, get_patient_values, get_sensors_values, update_table_patient_data
 import figure_styling
 import url_services.repository
 from url_services.url_service import UrlService
@@ -38,45 +40,14 @@ external_stylesheets = [
     'https://codepen.io/chriddyp/pen/brPBPO.css']
 
 #---------------------------------------------------------------------------
-
+id_range = range(1,7)
 app = dash.Dash(__name__, suppress_callback_exceptions=True, external_stylesheets=[dbc.themes.LUX],
                 meta_tags=[{'name': 'viewport',
                             'content': 'width=device-width, initial-scale=1.0'}]
                 )
-#to be moved to another file
-#--------------------------------------
-id_range = range(1, 7)
-patients_names = {}
-#N = 100
-def get_data():
-    for _id in id_range:
-        patient = requests.get(url=f"http://tesla.iem.pw.edu.pl:9080/v2/monitor/{_id}")
-        json_inf = patient.json()
-        patients_names[_id] = f"{json_inf['firstname']} {json_inf['lastname']}; disability: {json_inf['disabled']} "
-    return get_sensors_data()
-        
-def get_sensors_data():
-    sensors_dict = {}
-    for p_id in id_range:
-        if p_id not in sensors_dict.keys():
-            sensors_dict[p_id] = []
-        patient = requests.get(url=f"http://tesla.iem.pw.edu.pl:9080/v2/monitor/{p_id}")
-        patient_json = patient.json()
-        for measurment in patient_json["trace"]["sensors"]:
-            measurment['anomaly'] = str(measurment['anomaly'])
-            sensors_dict[p_id].append(measurment)
-            #print(measurment)
-    return sensors_dict
-#------------------------------------------------------------------------------
-current_patient = 5
-dfs = [pd.DataFrame(get_data()[i]) for i in id_range]
-for i in id_range:
-    dfs[i-1]["patient_id"] = i
-df = pd.concat(dfs)
-print(df)
-
     
-def generate_table( max_rows=40): #dataframe
+def generate_table(current_patient=5, max_rows=40): #dataframe
+    df = url_services.repository.get_latest()
     job = q1.enqueue(get_current_patient_data, args = (df, current_patient))
     while job.result is None:
         pass
@@ -110,8 +81,27 @@ def generate_fig(current_patient, df):
     )))
     return fig
 
+def sensors_history_fig(current_patient, df):
+    sensors = ["L0", "L1", "L2", "R0", "R1", "R2"]
+    fig = make_subplots(rows=3, cols=2, shared_xaxes=True, shared_yaxes=True,
+                        row_titles=["0", "1", "2"], column_titles=["L", "R"])
+    job = q1.enqueue(get_current_patient_data, args = (df, current_patient))
+    while job.result is None:
+        pass
+    res = job.result
     
-       
+    sensors_with_axes_coor = zip(sensors, [(1,1), (2,1), (3,1), (1,2), (2,2), (3,2)])
+    for sensor in sensors_with_axes_coor:
+        sensor_type, (row, col) = sensor
+        job = q1.enqueue(get_sensors_values, args = (res, sensor_type, 10))
+        while job.result is None:
+            pass
+        sensor_values = job.result
+        t = np.linspace(0, 10, num = len(sensor_values))
+        fig.add_trace(go.Scatter(x=t, y=sensor_values.iloc[::-1], name=sensor_type), row=row, col=col)
+    fig.update_yaxes(range = [0,1300])
+    return fig
+
 app_tabs = html.Div(
     [
         dbc.Tabs(
@@ -130,10 +120,11 @@ main_layout = html.Div([
     dcc.Dropdown(
         id='dropdown',
         options=[{'label': i, 'value': i} for i in id_range],
-        value=current_patient
+        value=5
     ),
-    generate_table(),
+    generate_table(current_patient=5),
     dcc.Interval(id='interval1', interval=1000, n_intervals=0),
+    dcc.Interval(id='interval2', interval=5*1000, n_intervals=0),
     html.H1(id='label1', children=''),
     html.Div(dcc.Graph( id="main_graph",
         ), style={
@@ -141,6 +132,7 @@ main_layout = html.Div([
             "display": "flex",
             "justify-content": "center",
     }),
+    html.Div(dcc.Graph(id="trace_graph")),
 ])
 app.layout = html.Div([
     dbc.Row(dbc.Col(html.H1("Activity Tracking",
@@ -161,7 +153,14 @@ def compute_value(value, n):
     result = job.result
     
     figure = generate_fig(current_patient=current_patient, df=df)
+    
     return result.to_dict('record'), figure
+
+@app.callback(Output('trace_graph', 'figure'), Input('interval2', 'n_intervals'), State('dropdown', 'value'))
+def serve_graphs(n, current_patient):
+    whole_df = url_services.repository.get_all()
+    trace_figure = sensors_history_fig(current_patient=current_patient, df=whole_df)
+    return trace_figure
 
 
 @app.callback(
