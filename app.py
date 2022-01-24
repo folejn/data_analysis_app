@@ -78,6 +78,7 @@ def generate_fig(current_patient, df):
         size=30,
         showscale=True,
         colorscale='temps',
+        cmin=0, cmax=1300
     )))
     return fig
 
@@ -117,14 +118,8 @@ app_tabs = html.Div(
 )
 
 main_layout = html.Div([
-    dcc.Dropdown(
-        id='dropdown',
-        options=[{'label': i, 'value': i} for i in id_range],
-        value=5
-    ),
     generate_table(current_patient=5),
     dcc.Interval(id='interval1', interval=1000, n_intervals=0),
-    dcc.Interval(id='interval2', interval=5*1000, n_intervals=0),
     html.H1(id='label1', children=''),
     html.Div(dcc.Graph( id="main_graph",
         ), style={
@@ -132,12 +127,23 @@ main_layout = html.Div([
             "display": "flex",
             "justify-content": "center",
     }),
+    
+])
+
+tab_graphs = html.Div([
+    dcc.Interval(id='interval2', interval=5*1000, n_intervals=0),
     html.Div(dcc.Graph(id="trace_graph")),
 ])
+
 app.layout = html.Div([
     dbc.Row(dbc.Col(html.H1("Activity Tracking",
                             style={"textAlign": "center"}), width=12)),
     html.Hr(),
+    dcc.Dropdown(
+        id='dropdown',
+        options=[{'label': i, 'value': i} for i in id_range],
+        value=5
+    ),
     dbc.Row(dbc.Col(app_tabs, width=12), className="mb-3"),
     html.Div(id='content', children=[]),
 
@@ -156,7 +162,7 @@ def compute_value(value, n):
     
     return result.to_dict('record'), figure
 
-@app.callback(Output('trace_graph', 'figure'), Input('interval2', 'n_intervals'), State('dropdown', 'value'))
+@app.callback(Output('trace_graph', 'figure'), [Input('interval2', 'n_intervals'), Input('dropdown', 'value')])
 def serve_graphs(n, current_patient):
     whole_df = url_services.repository.get_all()
     trace_figure = sensors_history_fig(current_patient=current_patient, df=whole_df)
@@ -172,7 +178,7 @@ def switch_tab(tab_chosen):
     if tab_chosen == "tab-main":
         return main_layout
     elif tab_chosen == "tab-graphs":
-        return tab_chosen
+        return tab_graphs
     elif tab_chosen == "tab-about":
         return tab_chosen
     return html.P("This shouldn't be displayed for now...")
