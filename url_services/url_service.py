@@ -2,7 +2,7 @@ import requests
 import time
 import threading
 import pandas as pd
-from url_services.repository import set
+from url_services.repository import set, add_anomaly
 
 class UrlService(threading.Thread):
     def __init__(self, threadName):
@@ -21,9 +21,14 @@ class UrlService(threading.Thread):
                     sensors_dict[p_id] = []
                 patient = requests.get(url=f"http://tesla.iem.pw.edu.pl:9080/v2/monitor/{p_id}")
                 patient_json = patient.json()
+                anomaly_detected = False
                 for measurment in patient_json["trace"]["sensors"]:
+                    if measurment['anomaly']:
+                        anomaly_detected = True
                     measurment['anomaly'] = str(measurment['anomaly'])
                     sensors_dict[p_id].append(measurment)
+                if anomaly_detected:
+                    add_anomaly( p_id, pd.DataFrame(sensors_dict[p_id]))
                     
             dfs = [pd.DataFrame(sensors_dict[i]) for i in self.id_range]
             for i in self.id_range:
@@ -36,6 +41,8 @@ class UrlService(threading.Thread):
     def set_flag(self, flag):
         self.ifRunFlag = flag
         
-
+service = UrlService("Request for data")
+service.start()
+time.sleep(6)
             
                 

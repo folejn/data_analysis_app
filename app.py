@@ -1,38 +1,22 @@
-import os
-from time import sleep
-import random
-from pandas.core.frame import DataFrame
-import requests
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-
+import requests
 from dash import html
 import dash_bootstrap_components as dbc
 
 import dash
-#import dash_table
-#import dash_core_components as dcc
-#import dash_html_components as html
 from dash import html
 from dash import dcc
 from dash import dash_table
 import numpy as np
-import pandas as pd
 from dash.dependencies import Input, Output, State
-from requests.sessions import Request
-from werkzeug.wrappers import response
-from flask_caching import Cache
 
-from rq import Queue
-from redis import Redis
-from my_queue_queries import get_current_patient_data, get_patient_values, get_sensors_values, update_table_patient_data
+from my_queue_queries import get_current_patient_data, get_patient_values, get_sensors_values, if_set_alarm, update_table_patient_data
 import figure_styling
 import url_services.repository
 from url_services.url_service import UrlService
+from url_services.repository import q1
 
-conn1 = Redis('127.0.0.1', 6379)
-
-q1 = Queue('low', connection=conn1, job_timeout='3m')
 external_stylesheets = [
     # Dash CSS
     'https://codepen.io/chriddyp/pen/bWLwgP.css',
@@ -52,20 +36,31 @@ def generate_table(current_patient=5, max_rows=40): #dataframe
     while job.result is None:
         pass
     dataframe = job.result
-    #dataframe = df[df["patient_id"] == current_patient].drop('patient_id', axis=1)
     print(f'Computing for patient: {current_patient}')
-    print(dataframe)
-    print(dataframe.to_dict('records'))
     return dash_table.DataTable(
         id='table', data=dataframe.to_dict('records'),
         columns=[{"name": i, "id": i} for i in dataframe.columns],
+        style_data={
+            'color': 'black',
+            'backgroundColor': 'white'
+        },
+    )
+    
+def generate_anomalies_table(current_patient, max_rows=40): #dataframe
+    df = url_services.repository.get_anomalies(current_patient)
+    dataframe = df
+    return dash_table.DataTable(
+        id='anomalies_table', data=dataframe.to_dict('records'),
+        columns=[{'id': "datetime", 'name': "datetime"}, {'id': "anomaly", 'name': "anomaly"},
+                 {'id': "value", 'name': "value"}, {'id': "name", 'name': "sensor"}],
+        page_current=0,
+        page_size=6,
+        page_action='custom'
     )
 
 def generate_fig(current_patient, df):
     fig = go.Figure()
-    color = ['rgb(93, 164, 214)', 'rgb(255, 144, 14)', 'rgb(44, 160, 101)','rgb(93, 164, 214)', 'rgb(255, 144, 14)', 'rgb(44, 160, 101)']
 
-    #foot_values = df[df['patient_id'] == current_patient]['value'].values.tolist()
     job = q1.enqueue(get_patient_values, args = (df, current_patient))
     
     while job.result is None:
@@ -127,7 +122,8 @@ main_layout = html.Div([
             "display": "flex",
             "justify-content": "center",
     }),
-    
+    'Anomalies history:',
+    generate_anomalies_table(current_patient=5),
 ])
 
 tab_graphs = html.Div([
@@ -148,9 +144,9 @@ app.layout = html.Div([
     html.Div(id='content', children=[]),
 
 ])
-@app.callback([Output('table', 'data'), Output('main_graph','figure')],
+@app.callback([Output('table', 'data'), Output('main_graph','figure'), Output('table', 'style_data')], #
               [Input('dropdown', 'value'), Input('interval1', 'n_intervals')])
-def compute_value(value, n):
+def real_time_data(value, n):
     df = url_services.repository.get_latest()
     current_patient = value
     job = q1.enqueue(update_table_patient_data, args = (df, current_patient))
@@ -158,9 +154,31 @@ def compute_value(value, n):
         pass
     result = job.result
     
-    figure = generate_fig(current_patient=current_patient, df=df)
-    
-    return result.to_dict('record'), figure
+    alarm = len(result[result["anomaly"] == "True"]) > 0
+    if alarm:
+        style_data={
+            'color': 'white',
+            'backgroundColor': 'red'
+        }
+    else: 
+        style_data={
+            'color': 'black',
+            'backgroundColor': 'white'
+        }
+
+    figure = generate_fig(current_patient=current_patient, df=result)    
+    return result.to_dict('record'), figure,style_data
+
+@app.callback(Output('anomalies_table', 'data'), 
+              [Input('interval1', 'n_intervals'), 
+              Input('dropdown', 'value'), 
+              Input('anomalies_table', "page_current"),
+            Input('anomalies_table', "page_size")])
+def update_anomalies(n, current_patient, page_current, page_size):
+    anomalies_df = url_services.repository.get_anomalies(current_patient)
+    if not anomalies_df.empty:
+        return anomalies_df.iloc[page_current*page_size:(page_current+ 1)*page_size].to_dict('records')
+    pass
 
 @app.callback(Output('trace_graph', 'figure'), [Input('interval2', 'n_intervals'), Input('dropdown', 'value')])
 def serve_graphs(n, current_patient):
@@ -185,5 +203,6 @@ def switch_tab(tab_chosen):
 
 if __name__ == '__main__':
     service = UrlService("Request for data")
+    service.setDaemon(True)
     service.start()
     app.run_server(debug=True)
