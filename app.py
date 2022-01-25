@@ -25,6 +25,9 @@ external_stylesheets = [
 
 #---------------------------------------------------------------------------
 id_range = range(1,7)
+patients_names = {}
+
+
 app = dash.Dash(__name__, suppress_callback_exceptions=True, external_stylesheets=[dbc.themes.LUX],
                 meta_tags=[{'name': 'viewport',
                             'content': 'width=device-width, initial-scale=1.0'}]
@@ -93,7 +96,7 @@ def sensors_history_fig(current_patient, df):
         while job.result is None:
             pass
         sensor_values = job.result
-        t = np.linspace(0, 10, num = len(sensor_values))
+        t = np.linspace(-10, 0, num = len(sensor_values))
         fig.add_trace(go.Scatter(x=t, y=sensor_values.iloc[::-1], name=sensor_type), row=row, col=col)
     fig.update_yaxes(range = [0,1300])
     return fig
@@ -140,6 +143,7 @@ app.layout = html.Div([
         options=[{'label': i, 'value': i} for i in id_range],
         value=5
     ),
+    html.Div(id='info', children=[""]),
     dbc.Row(dbc.Col(app_tabs, width=12), className="mb-3"),
     html.Div(id='content', children=[]),
 
@@ -186,6 +190,9 @@ def serve_graphs(n, current_patient):
     trace_figure = sensors_history_fig(current_patient=current_patient, df=whole_df)
     return trace_figure
 
+@app.callback(Output('info', 'children'), Input('dropdown', 'value'))
+def patient_info(current_patient):
+    return [patients_names[current_patient]]
 
 @app.callback(
     Output("content", "children"),
@@ -202,6 +209,11 @@ def switch_tab(tab_chosen):
     return html.P("This shouldn't be displayed for now...")
 
 if __name__ == '__main__':
+    for _id in id_range:
+        patient = requests.get(url=f"http://tesla.iem.pw.edu.pl:9080/v2/monitor/{_id}")
+        json_inf = patient.json()
+        patients_names[_id] = f"{json_inf['firstname']} {json_inf['lastname']}; disability: {json_inf['disabled']} "
+
     service = UrlService("Request for data")
     service.setDaemon(True)
     service.start()
