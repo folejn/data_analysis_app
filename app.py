@@ -11,7 +11,7 @@ from dash import dash_table
 import numpy as np
 from dash.dependencies import Input, Output, State
 
-from my_queue_queries import get_current_patient_data, get_patient_values, get_sensors_values, if_set_alarm, update_table_patient_data
+from my_queue_queries import get_current_patient_data, get_patient_values, get_sensors_values, update_table_patient_data
 import figure_styling
 import url_services.repository
 from url_services.url_service import UrlService
@@ -130,7 +130,7 @@ main_layout = html.Div([
 ])
 
 tab_graphs = html.Div([
-    dcc.Interval(id='interval2', interval=5*1000, n_intervals=0),
+    dcc.Interval(id='interval2', interval=1*1000, n_intervals=0),
     html.Div(dcc.Graph(id="trace_graph")),
 ])
 

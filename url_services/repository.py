@@ -42,6 +42,8 @@ def add_anomaly(current_patient, df):
     context = pa.default_serialization_context()
     df['datetime'] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     anomalies_db.lpush(current_patient, context.serialize(df).to_buffer().to_pybytes())
+    if anomalies_db.llen(current_patient) > 600:
+        anomalies_db.rpop(current_patient)
     
 def get_anomalies(current_patient):
     context = pa.default_serialization_context()
@@ -54,3 +56,5 @@ def get_anomalies(current_patient):
         return pd.concat(dfs)
     except ValueError:
         return pd.DataFrame()
+    
+    

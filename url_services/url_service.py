@@ -41,8 +41,5 @@ class UrlService(threading.Thread):
     def set_flag(self, flag):
         self.ifRunFlag = flag
         
-service = UrlService("Request for data")
-service.start()
-time.sleep(6)
             
                 
